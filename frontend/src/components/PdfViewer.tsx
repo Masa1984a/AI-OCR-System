@@ -182,8 +182,8 @@ export default function PdfViewer({
         {pageSize.width > 0 && pageSize.height > 0 && (
           <Box sx={{ position: 'absolute', top: 0, left: 0 }}>
             <DrawingLayer
-              width={pageSize.width * scale}
-              height={pageSize.height * scale}
+              width={pageSize.width}
+              height={pageSize.height}
               mode={mode}
               onSelectionComplete={onSelectionComplete || (() => {})}
             />
