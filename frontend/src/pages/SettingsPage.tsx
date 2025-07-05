@@ -21,15 +21,31 @@ import {
   Tabs,
   Tab,
   Chip,
+  FormGroup,
+  Autocomplete,
+  Stack,
 } from '@mui/material';
-import { Save, Settings as SettingsIcon, SmartToy, Psychology } from '@mui/icons-material';
+import { Save, Settings as SettingsIcon, SmartToy, Psychology, AutoAwesome } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
-import { tenantApi } from '../services/api';
+import { tenantApi, ocrApi } from '../services/api';
 
 interface LLMSettings {
-  defaultModel: 'claude' | 'gemini';
-  enabledModels: ('claude' | 'gemini')[];
-  claudeModel?: string;
+  defaultModel: string;
+  enabledModels: string[];
+  modelConfigs?: {
+    [key: string]: {
+      apiKey?: string;
+      maxTokens?: number;
+      temperature?: number;
+    };
+  };
+}
+
+interface AvailableModel {
+  model: string;
+  displayName: string;
+  provider: string;
+  description?: string;
 }
 
 interface TabPanelProps {
@@ -54,32 +70,64 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
+const getProviderIcon = (provider: string) => {
+  switch (provider) {
+    case 'claude':
+      return <Psychology color="primary" />;
+    case 'chatgpt':
+      return <SmartToy color="secondary" />;
+    case 'gemini':
+      return <AutoAwesome color="warning" />;
+    default:
+      return <SmartToy />;
+  }
+};
+
+const getProviderColor = (provider: string) => {
+  switch (provider) {
+    case 'claude':
+      return 'primary';
+    case 'chatgpt':
+      return 'secondary';
+    case 'gemini':
+      return 'warning';
+    default:
+      return 'default';
+  }
+};
+
 export default function SettingsPage() {
   const { user } = useAuth();
   const [tabValue, setTabValue] = useState(0);
   const [llmSettings, setLlmSettings] = useState<LLMSettings>({
-    defaultModel: 'claude',
-    enabledModels: ['claude'],
-    claudeModel: 'claude-4-sonnet-20250514',
+    defaultModel: '',
+    enabledModels: [],
+    modelConfigs: {},
   });
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // LLM設定の読み込み
+  // LLM設定と利用可能なモデルの読み込み
   useEffect(() => {
-    loadLLMSettings();
+    loadData();
   }, []);
 
-  const loadLLMSettings = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const response = await tenantApi.getLLMSettings();
-      setLlmSettings(response.data);
+      const [settingsResponse, modelsResponse] = await Promise.all([
+        tenantApi.getLLMSettings(),
+        ocrApi.getAvailableModels(),
+      ]);
+      
+      setLlmSettings(settingsResponse.data);
+      setAvailableModels(modelsResponse.data.models || []);
     } catch (error: any) {
-      console.error('Failed to load LLM settings:', error);
-      setError('LLM設定の読み込みに失敗しました');
+      console.error('Failed to load data:', error);
+      setError('設定の読み込みに失敗しました');
     } finally {
       setLoading(false);
     }
@@ -89,8 +137,8 @@ export default function SettingsPage() {
     setTabValue(newValue);
   };
 
-  const handleDefaultModelChange = (event: SelectChangeEvent<'claude' | 'gemini'>) => {
-    const newModel = event.target.value as 'claude' | 'gemini';
+  const handleDefaultModelChange = (event: SelectChangeEvent<string>) => {
+    const newModel = event.target.value;
     setLlmSettings(prev => ({
       ...prev,
       defaultModel: newModel,
@@ -101,33 +149,15 @@ export default function SettingsPage() {
     }));
   };
 
-  const handleEnabledModelsChange = (model: 'claude' | 'gemini') => {
-    setLlmSettings(prev => {
-      const isCurrentlyEnabled = prev.enabledModels.includes(model);
-      let newEnabledModels: ('claude' | 'gemini')[];
-      
-      if (isCurrentlyEnabled) {
-        // モデルを無効にする場合、デフォルトモデルは無効にできない
-        if (model === prev.defaultModel) {
-          return prev; // 変更しない
-        }
-        newEnabledModels = prev.enabledModels.filter(m => m !== model);
-      } else {
-        // モデルを有効にする場合
-        newEnabledModels = [...prev.enabledModels, model];
-      }
-      
-      return {
-        ...prev,
-        enabledModels: newEnabledModels,
-      };
-    });
-  };
-
-  const handleClaudeModelChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEnabledModelsChange = (event: React.SyntheticEvent, value: string[]) => {
+    // デフォルトモデルは必ず有効にする
+    const newEnabledModels = value.includes(llmSettings.defaultModel) 
+      ? value 
+      : [...value, llmSettings.defaultModel];
+    
     setLlmSettings(prev => ({
       ...prev,
-      claudeModel: event.target.value,
+      enabledModels: newEnabledModels,
     }));
   };
 
@@ -146,12 +176,20 @@ export default function SettingsPage() {
     }
   };
 
-  // 管理者のみアクセス可能
+  const groupedModels = availableModels.reduce((acc, model) => {
+    if (!acc[model.provider]) {
+      acc[model.provider] = [];
+    }
+    acc[model.provider].push(model);
+    return acc;
+  }, {} as Record<string, AvailableModel[]>);
+
+  // Admin権限がない場合は表示しない
   if (user?.role !== 'admin') {
     return (
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
         <Alert severity="error">
-          この機能は管理者のみアクセス可能です。
+          この機能にアクセスする権限がありません。
         </Alert>
       </Container>
     );
@@ -160,7 +198,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
           <CircularProgress />
         </Box>
       </Container>
@@ -169,149 +207,140 @@ export default function SettingsPage() {
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" component="h1" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <SettingsIcon color="primary" />
-          システム設定
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          システムの動作設定を管理します
-        </Typography>
-      </Box>
+      <Typography variant="h4" sx={{ mb: 4 }}>
+        <SettingsIcon sx={{ mr: 1, verticalAlign: 'bottom' }} />
+        システム設定
+      </Typography>
 
       <Card>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={tabValue} onChange={handleTabChange}>
-            <Tab
-              label="AI・OCR設定"
-              icon={<SmartToy />}
-              iconPosition="start"
-              id="settings-tab-0"
-              aria-controls="settings-tabpanel-0"
-            />
-            {/* 将来的に他の設定タブを追加可能 */}
-          </Tabs>
-        </Box>
+        <CardContent sx={{ p: 0 }}>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs value={tabValue} onChange={handleTabChange}>
+              <Tab label="LLMモデル設定" />
+              <Tab label="その他の設定" disabled />
+            </Tabs>
+          </Box>
 
-        <TabPanel value={tabValue} index={0}>
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="h6" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Psychology color="primary" />
-              LLMモデル設定
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              OCR処理に使用するAIモデルを設定します。設定はテナント全体に適用されます。
-            </Typography>
+          <TabPanel value={tabValue} index={0}>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Psychology color="primary" />
+                LLMモデル設定
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                OCR処理に使用するAIモデルを設定します。設定はテナント全体に適用されます。
+              </Typography>
 
-            {error && (
-              <Alert severity="error" sx={{ mb: 3 }}>
-                {error}
-              </Alert>
-            )}
-
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {/* デフォルトモデル選択 */}
-              <FormControl fullWidth>
-                <InputLabel>デフォルトモデル</InputLabel>
-                <Select
-                  value={llmSettings.defaultModel}
-                  label="デフォルトモデル"
-                  onChange={handleDefaultModelChange}
-                >
-                  <MenuItem value="claude">
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Psychology color="primary" />
-                      Claude 4 Sonnet
-                    </Box>
-                  </MenuItem>
-                  <MenuItem value="gemini">
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <SmartToy color="secondary" />
-                      Gemini 2.0 Flash
-                    </Box>
-                  </MenuItem>
-                </Select>
-              </FormControl>
-
-              <Divider />
-
-              {/* 有効なモデルの選択 */}
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 2 }}>
-                  有効なモデル
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={llmSettings.enabledModels.includes('claude')}
-                        onChange={() => handleEnabledModelsChange('claude')}
-                        disabled={llmSettings.defaultModel === 'claude'}
-                      />
-                    }
-                    label={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Psychology color="primary" />
-                        Claude 4 Sonnet
-                        {llmSettings.defaultModel === 'claude' && (
-                          <Chip label="デフォルト" size="small" color="primary" />
-                        )}
-                      </Box>
-                    }
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={llmSettings.enabledModels.includes('gemini')}
-                        onChange={() => handleEnabledModelsChange('gemini')}
-                        disabled={llmSettings.defaultModel === 'gemini'}
-                      />
-                    }
-                    label={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <SmartToy color="secondary" />
-                        Gemini 2.0 Flash
-                        {llmSettings.defaultModel === 'gemini' && (
-                          <Chip label="デフォルト" size="small" color="primary" />
-                        )}
-                      </Box>
-                    }
-                  />
-                </Box>
-              </Box>
-
-              <Divider />
-
-              {/* Claude モデル詳細設定 */}
-              {llmSettings.enabledModels.includes('claude') && (
-                <Box>
-                  <Typography variant="subtitle2" sx={{ mb: 2 }}>
-                    Claude モデル詳細設定
-                  </Typography>
-                  <TextField
-                    fullWidth
-                    label="Claude モデル名"
-                    value={llmSettings.claudeModel || ''}
-                    onChange={handleClaudeModelChange}
-                    helperText="使用するClaudeモデルのバージョンを指定します（例: claude-4-sonnet-20250514）"
-                  />
-                </Box>
+              {error && (
+                <Alert severity="error" sx={{ mb: 3 }}>
+                  {error}
+                </Alert>
               )}
 
-              {/* 保存ボタン */}
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 2 }}>
-                <Button
-                  variant="contained"
-                  onClick={saveLLMSettings}
-                  disabled={saving}
-                  startIcon={saving ? <CircularProgress size={20} /> : <Save />}
-                >
-                  {saving ? '保存中...' : 'LLM設定を保存'}
-                </Button>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {/* デフォルトモデル選択 */}
+                <FormControl fullWidth>
+                  <InputLabel>デフォルトモデル</InputLabel>
+                  <Select
+                    value={llmSettings.defaultModel}
+                    label="デフォルトモデル"
+                    onChange={handleDefaultModelChange}
+                  >
+                    {availableModels.map((model) => (
+                      <MenuItem key={model.model} value={model.model}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          {getProviderIcon(model.provider)}
+                          <Box>
+                            <Typography variant="body1">{model.displayName}</Typography>
+                            {model.description && (
+                              <Typography variant="caption" color="text.secondary">
+                                {model.description}
+                              </Typography>
+                            )}
+                          </Box>
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <Divider />
+
+                {/* 有効なモデルの選択 */}
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 2 }}>
+                    有効なモデル
+                  </Typography>
+                  <Autocomplete
+                    multiple
+                    options={availableModels}
+                    value={availableModels.filter(m => llmSettings.enabledModels.includes(m.model))}
+                    onChange={(event, newValue) => {
+                      handleEnabledModelsChange(event, newValue.map(m => m.model));
+                    }}
+                    groupBy={(option) => option.provider}
+                    getOptionLabel={(option) => option.displayName}
+                    renderOption={(props, option) => (
+                      <Box component="li" {...props}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                          {getProviderIcon(option.provider)}
+                          <Box sx={{ flexGrow: 1 }}>
+                            <Typography variant="body2">{option.displayName}</Typography>
+                            {option.description && (
+                              <Typography variant="caption" color="text.secondary">
+                                {option.description}
+                              </Typography>
+                            )}
+                          </Box>
+                          {option.model === llmSettings.defaultModel && (
+                            <Chip label="デフォルト" size="small" color="primary" />
+                          )}
+                        </Box>
+                      </Box>
+                    )}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        variant="outlined"
+                        placeholder="使用可能にするモデルを選択"
+                      />
+                    )}
+                    renderTags={(value, getTagProps) =>
+                      value.map((option, index) => (
+                        <Chip
+                          variant="outlined"
+                          label={option.displayName}
+                          icon={getProviderIcon(option.provider)}
+                          color={getProviderColor(option.provider) as any}
+                          {...getTagProps({ index })}
+                          disabled={option.model === llmSettings.defaultModel}
+                        />
+                      ))
+                    }
+                  />
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    ※ デフォルトモデルは自動的に有効になります
+                  </Typography>
+                </Box>
+
+                <Divider />
+
+                {/* 保存ボタン */}
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={saveLLMSettings}
+                    disabled={saving || !llmSettings.defaultModel}
+                    startIcon={<Save />}
+                  >
+                    {saving ? '保存中...' : '設定を保存'}
+                  </Button>
+                </Box>
               </Box>
             </Box>
-          </Box>
-        </TabPanel>
+          </TabPanel>
+        </CardContent>
       </Card>
 
       {/* 成功メッセージ */}
@@ -319,6 +348,7 @@ export default function SettingsPage() {
         open={!!successMessage}
         autoHideDuration={6000}
         onClose={() => setSuccessMessage(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
         <Alert onClose={() => setSuccessMessage(null)} severity="success">
           {successMessage}
