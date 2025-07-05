@@ -206,13 +206,24 @@ export const auditLogsApi = {
 export const tenantApi = {
   getLLMSettings: () => api.get('/api/v1/tenants/settings/llm'),
   updateLLMSettings: (data: {
-    defaultModel: 'claude' | 'gemini';
-    enabledModels: ('claude' | 'gemini')[];
-    claudeModel?: string;
+    defaultModel: string;
+    enabledModels: string[];
+    modelConfigs?: {
+      [key: string]: {
+        apiKey?: string;
+        maxTokens?: number;
+        temperature?: number;
+      };
+    };
   }) => api.put('/api/v1/tenants/settings/llm', data),
   
   getSettings: () => api.get('/api/v1/tenants/settings'),
   updateSettings: (data: { [key: string]: any }) => api.put('/api/v1/tenants/settings', data),
+};
+
+// OCR関連
+export const ocrApi = {
+  getAvailableModels: () => api.get('/api/v1/ocr/models/available'),
 };
 
 // 承認ワークフロー関連

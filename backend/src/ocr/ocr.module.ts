@@ -10,6 +10,7 @@ import { Document } from '../entities/document.entity';
 import { AuthModule } from '../auth/auth.module';
 import { StorageModule } from '../storage/storage.module';
 import { TenantsModule } from '../tenants/tenants.module';
+import { LLMProviderFactory } from './providers';
 
 @Module({
   imports: [
@@ -20,7 +21,7 @@ import { TenantsModule } from '../tenants/tenants.module';
     TenantsModule,
   ],
   controllers: [OcrController],
-  providers: [OcrService],
+  providers: [OcrService, LLMProviderFactory],
   exports: [OcrService],
 })
 export class OcrModule {}
