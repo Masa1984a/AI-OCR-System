@@ -18,6 +18,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { User } from '../entities/user.entity';
 import { ExtractOcrDto } from './dto/extract-ocr.dto';
+import { AvailableModelsResponseDto } from './dto/available-models.dto';
 
 export class OcrRequestDto implements Omit<OCRRequest, 'imageBase64'> {
   @ApiProperty({ description: 'Base64エンコードされた画像データ' })
@@ -145,5 +146,14 @@ export class OcrController {
     @CurrentUser() user: User,
   ): Promise<{ success: boolean; message: string }> {
     return this.ocrService.deleteExtraction(extractionId, user.tenantId);
+  }
+
+  @Get('models/available')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '利用可能なLLMモデルの一覧を取得' })
+  async getAvailableModels(
+    @CurrentUser() user: User,
+  ): Promise<AvailableModelsResponseDto> {
+    return this.ocrService.getAvailableModels(user.tenantId);
   }
 }

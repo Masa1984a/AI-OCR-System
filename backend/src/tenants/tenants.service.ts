@@ -4,9 +4,15 @@ import { Repository } from 'typeorm';
 import { Tenant } from '../entities/tenant.entity';
 
 export interface LLMSettings {
-  defaultModel: 'claude' | 'gemini';
-  enabledModels: ('claude' | 'gemini')[];
-  claudeModel?: string;
+  defaultModel: string;
+  enabledModels: string[];
+  modelConfigs?: {
+    [key: string]: {
+      apiKey?: string;
+      maxTokens?: number;
+      temperature?: number;
+    };
+  };
 }
 
 @Injectable()
@@ -33,9 +39,9 @@ export class TenantsService {
 
       // Return LLM settings from tenant settings or defaults
       const llmSettings = tenant.settings?.llm || {
-        defaultModel: 'claude',
-        enabledModels: ['claude'],
-        claudeModel: 'claude-4-sonnet-20250514',
+        defaultModel: 'claude-3-5-sonnet-20241022',
+        enabledModels: ['claude-3-5-sonnet-20241022'],
+        modelConfigs: {},
       };
 
       return llmSettings;
