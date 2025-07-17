@@ -581,9 +581,10 @@ const ApprovalSection: React.FC<ApprovalSectionProps> = ({ documentId }) => {
             </FormControl>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setStartDialogOpen(false)}>
+            {/* Action1：ワークフロー開始時のキャンセルボタンを非表示にするタスク */}
+            {/* <Button onClick={() => setStartDialogOpen(false)}>
               キャンセル
-            </Button>
+            </Button> */}
             <Button 
               onClick={handleStartApproval}
               variant="contained"
