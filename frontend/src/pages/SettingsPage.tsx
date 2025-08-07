@@ -28,9 +28,10 @@ import { tenantApi } from '../services/api';
 import { userPreferencesService } from '../services/user-preferences';
 
 interface LLMSettings {
-  defaultModel: 'claude' | 'gemini';
-  enabledModels: ('claude' | 'gemini')[];
+  defaultModel: 'claude' | 'openai' | 'gemini';
+  enabledModels: ('claude' | 'openai' | 'gemini')[];
   claudeModel?: string;
+  openaiModel?: string;
 }
 
 interface TabPanelProps {
@@ -62,6 +63,7 @@ export default function SettingsPage() {
     defaultModel: 'claude',
     enabledModels: ['claude'],
     claudeModel: 'claude-4-sonnet-20250514',
+    openaiModel: 'gpt-4o',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -90,8 +92,8 @@ export default function SettingsPage() {
     setTabValue(newValue);
   };
 
-  const handleDefaultModelChange = (event: SelectChangeEvent<'claude' | 'gemini'>) => {
-    const newModel = event.target.value as 'claude' | 'gemini';
+  const handleDefaultModelChange = (event: SelectChangeEvent<'claude' | 'openai' | 'gemini'>) => {
+    const newModel = event.target.value as 'claude' | 'openai' | 'gemini';
     setLlmSettings(prev => ({
       ...prev,
       defaultModel: newModel,
@@ -102,10 +104,10 @@ export default function SettingsPage() {
     }));
   };
 
-  const handleEnabledModelsChange = (model: 'claude' | 'gemini') => {
+  const handleEnabledModelsChange = (model: 'claude' | 'openai' | 'gemini') => {
     setLlmSettings(prev => {
       const isCurrentlyEnabled = prev.enabledModels.includes(model);
-      let newEnabledModels: ('claude' | 'gemini')[];
+      let newEnabledModels: ('claude' | 'openai' | 'gemini')[];
       
       if (isCurrentlyEnabled) {
         // モデルを無効にする場合、デフォルトモデルは無効にできない
@@ -129,6 +131,13 @@ export default function SettingsPage() {
     setLlmSettings(prev => ({
       ...prev,
       claudeModel: event.target.value,
+    }));
+  };
+
+  const handleOpenAIModelChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setLlmSettings(prev => ({
+      ...prev,
+      openaiModel: event.target.value,
     }));
   };
 
@@ -232,6 +241,12 @@ export default function SettingsPage() {
                       Claude 4 Sonnet
                     </Box>
                   </MenuItem>
+                  <MenuItem value="openai">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <SmartToy color="success" />
+                      ChatGPT (GPT-4o)
+                    </Box>
+                  </MenuItem>
                   <MenuItem value="gemini">
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <SmartToy color="secondary" />
@@ -262,6 +277,24 @@ export default function SettingsPage() {
                         <Psychology color="primary" />
                         Claude 4 Sonnet
                         {llmSettings.defaultModel === 'claude' && (
+                          <Chip label="デフォルト" size="small" color="primary" />
+                        )}
+                      </Box>
+                    }
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={llmSettings.enabledModels.includes('openai')}
+                        onChange={() => handleEnabledModelsChange('openai')}
+                        disabled={llmSettings.defaultModel === 'openai'}
+                      />
+                    }
+                    label={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <SmartToy color="success" />
+                        ChatGPT (GPT-4o)
+                        {llmSettings.defaultModel === 'openai' && (
                           <Chip label="デフォルト" size="small" color="primary" />
                         )}
                       </Box>
@@ -302,6 +335,22 @@ export default function SettingsPage() {
                     value={llmSettings.claudeModel || ''}
                     onChange={handleClaudeModelChange}
                     helperText="使用するClaudeモデルのバージョンを指定します（例: claude-4-sonnet-20250514）"
+                  />
+                </Box>
+              )}
+
+              {/* OpenAI モデル詳細設定 */}
+              {llmSettings.enabledModels.includes('openai') && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 2 }}>
+                    OpenAI モデル詳細設定
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="OpenAI モデル名"
+                    value={llmSettings.openaiModel || ''}
+                    onChange={handleOpenAIModelChange}
+                    helperText="使用するOpenAIモデルのバージョンを指定します（例: gpt-4o, gpt-4o-mini）"
                   />
                 </Box>
               )}

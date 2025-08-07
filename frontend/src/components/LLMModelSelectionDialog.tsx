@@ -28,7 +28,7 @@ export const LLMModelSelectionDialog: React.FC<LLMModelSelectionDialogProps> = (
   onClose,
   onSave
 }) => {
-  const [selectedModel, setSelectedModel] = useState<string>('claude-4-sonnet');
+  const [selectedModel, setSelectedModel] = useState<string>('claude');
   const [dontShowAgain, setDontShowAgain] = useState(false);
 
   const handleSave = async () => {
@@ -72,7 +72,7 @@ export const LLMModelSelectionDialog: React.FC<LLMModelSelectionDialogProps> = (
               sx={{ mt: 1 }}
             >
               <FormControlLabel
-                value="claude-4-sonnet"
+                value="claude"
                 control={<Radio />}
                 label={
                   <Box>
@@ -86,7 +86,21 @@ export const LLMModelSelectionDialog: React.FC<LLMModelSelectionDialogProps> = (
                 }
               />
               <FormControlLabel
-                value="gemini-2.0-flash"
+                value="openai"
+                control={<Radio />}
+                label={
+                  <Box>
+                    <Typography variant="body1" fontWeight="medium">
+                      ChatGPT (GPT-4o)
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      多言語対応、高精度な画像解析とテキスト認識
+                    </Typography>
+                  </Box>
+                }
+              />
+              <FormControlLabel
+                value="gemini"
                 control={<Radio />}
                 label={
                   <Box>

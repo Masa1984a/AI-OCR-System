@@ -2,6 +2,7 @@ import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { ConfigService } from '@nestjs/config';
 import { Template } from '../entities/template.entity';
 import { PromptTemplate } from '../entities/prompt-template.entity';
@@ -34,6 +35,7 @@ export interface OCRResult {
 export class OcrService {
   private readonly logger = new Logger(OcrService.name);
   private anthropic: Anthropic;
+  private openai: OpenAI;
   private geminiApiKey: string;
   private ajv: Ajv;
 
@@ -56,6 +58,15 @@ export class OcrService {
       this.logger.warn('ANTHROPIC_API_KEY is not set in environment variables');
     } else {
       this.anthropic = new Anthropic({ apiKey: anthropicApiKey });
+    }
+    
+    // Initialize OpenAI API
+    const openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
+    if (!openaiApiKey) {
+      this.logger.warn('OPENAI_API_KEY is not set in environment variables');
+    } else {
+      this.openai = new OpenAI({ apiKey: openaiApiKey });
+      this.logger.log(`OpenAI API key configured: ${openaiApiKey.substring(0, 20)}...`);
     }
     
     // Initialize Gemini API key
@@ -106,6 +117,10 @@ export class OcrService {
         this.logger.debug('Sending request to Gemini API...');
         extractedData = await this.processWithGemini(imageBase64, prompts);
         modelName = 'gemini-2.0-flash';
+      } else if (selectedModel === 'openai' || selectedModel === 'chatgpt') {
+        this.logger.debug('Sending request to OpenAI API...');
+        extractedData = await this.processWithOpenAI(imageBase64, prompts);
+        modelName = 'gpt-4-vision-preview';
       } else {
         this.logger.debug('Sending request to Claude API...');
         extractedData = await this.processWithClaude(imageBase64, prompts);
@@ -354,6 +369,10 @@ ${example}
         this.logger.debug(`Sending block OCR request to Gemini API for block: ${blockId}`);
         extractedData = await this.processWithGemini(imageBase64, prompts);
         modelName = 'gemini-2.0-flash';
+      } else if (selectedModel === 'openai' || selectedModel === 'chatgpt') {
+        this.logger.debug(`Sending block OCR request to OpenAI API for block: ${blockId}`);
+        extractedData = await this.processWithOpenAI(imageBase64, prompts);
+        modelName = 'gpt-4-vision-preview';
       } else {
         this.logger.debug(`Sending block OCR request to Claude API for block: ${blockId}`);
         extractedData = await this.processWithClaude(imageBase64, prompts);
@@ -483,6 +502,60 @@ ${JSON.stringify(block.schema, null, 2)}
     }
 
     return this.parseClaudeResponse(content.text, 'processWithClaude');
+  }
+
+  /**
+   * OpenAI APIでOCR処理を実行
+   */
+  private async processWithOpenAI(imageBase64: string, prompts: string[]): Promise<any> {
+    if (!this.openai) {
+      throw new HttpException('OpenAI API is not configured', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    const promptText = prompts.join('\n\n');
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: this.configService.get('OPENAI_MODEL', 'gpt-4o'),
+        max_tokens: 4096,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: promptText,
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/png;base64,${imageBase64}`,
+                  detail: 'high'
+                },
+              },
+            ],
+          },
+        ],
+      });
+
+      this.logger.debug('Received response from OpenAI API');
+
+      // レスポンスからテキストを抽出
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error('No content in OpenAI response');
+      }
+
+      // OpenAIのレスポンスもClaudeと同じパーサーを使用（JSONフォーマットが期待されるため）
+      return this.parseClaudeResponse(content, 'processWithOpenAI');
+
+    } catch (error) {
+      this.logger.error('OpenAI API request failed:', error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(`OpenAI API request failed: ${error.message}`, HttpStatus.BAD_REQUEST);
+    }
   }
 
   /**
